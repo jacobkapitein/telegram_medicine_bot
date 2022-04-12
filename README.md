@@ -3,6 +3,7 @@ I am currently creating this bot, because my girlfriend forgets her medicine eve
 The code in this project is "as-is", so do whatever you want with it, I will not guarantee anything.
 
 ## Goals for this project:
+- ✔ Ping command
 - ❌ Registering users
 - ❌ Sending messages to registered users
 - ❌ Send reminders
