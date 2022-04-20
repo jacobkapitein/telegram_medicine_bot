@@ -1,10 +1,13 @@
 use std::error::Error;
+use once_cell::sync::OnceCell;
+use std::str::FromStr;
 use teloxide::prelude2::*;
-use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup};
+use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
 use teloxide::utils::command::BotCommand;
 
 use rand::{thread_rng, Rng};
 use rand::distributions::Alphanumeric;
+use tokio_cron_scheduler::{Job, JobScheduler};
 
 #[derive(BotCommand, Clone)]
 #[command(rename = "lowercase", description = "The following commands are supported:")]
@@ -15,6 +18,8 @@ enum Command {
     Ping,
     #[command(description = "test for an inline keyboard callback")]
     CallbackTest,
+    #[command(description = "set a reminder using UNIX cron formatting"), parse_with = "split"]
+    SetReminder {minute: String, hour: String, day_of_month: String, month: String, day_of_week: String},
 }
 
 fn make_keyboard(reminder_id: String) -> InlineKeyboardMarkup {
@@ -48,11 +53,15 @@ async fn command_handler(
     match command {
         Command::Help => bot.send_message(message.chat.id, Command::descriptions()).await?,
         Command::Ping => bot.send_message(message.chat.id, "Pong!").await?,
+        Command::SetReminder {minute, hour, day_of_month, month, day_of_week} => {
+            let cron_expression: str = format!("{} {} {} {} {}", minute, hour, day_of_month, month, day_of_week).parse().unwrap();
+
+        },
         Command::CallbackTest => {
             let reminder_id = random_string();
             let keyboard = make_keyboard(reminder_id);
             bot.send_message(message.chat.id, "Reminder test").reply_markup(keyboard).await?
-        }
+        },
     };
 
     Ok(())
@@ -62,14 +71,29 @@ async fn callback_handler(
     query: CallbackQuery,
     bot: AutoSend<Bot>
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    if let Some(version) = query.data {
-        println!("{}", version);
+    if let Some(callback_data) = query.data {
+        match query.message {
+            Some(Message {id, chat, .. }) => {
+                // Split string on `_`
+                let split_data = callback_data.split('_').collect::<Vec<&str>>();
+                if split_data.len() != 2 {
+                    // Incorrect formatting on the callback query
+                    bot.send_message(chat.id, "<b>Error:</b> Invalid callback. This callback is not working and possibly won't work either.").parse_mode(ParseMode::Html).await?;
+                } else {
+                    // Acknowledge callback
+                    bot.send_message(chat.id, callback_data).await?;
+                    bot.answer_callback_query(query.id).await?;
+                }
+            },
+            None => {}
+        }
     }
 
     Ok(())
 }
 
 
+static SCHEDULER: OnceCell<JobScheduler> = OnceCell::new();
 
 // This is the main function to start up the bot
 async fn run() {
